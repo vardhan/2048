@@ -5,11 +5,27 @@ const kColumns = 4;
 const kBackgroundStyle = "#004643"; // https://www.happyhues.co/palettes/10
 const kTileSize = 90;
 const kTilePadding = 5;
-const kTileStyle = "#f9bc60";
+
+const kTileStyle = {
+  0:"#f9bc60",
+  1:"#f9bc60",
+  2:"#eee4da",
+  4:"#eee1c9",
+  8:"#f3b27a",
+  16:"#f69664",
+  32:"#f77c5f",
+  64:"#f75f3b",
+  128:"#edd073",
+  256:"#edcc62",
+  512:"#edc950",
+  1024:"#edc53f",
+  2048:"#edc22e",
+  4096:"#edc22e"
+};
 
 const kTranslateDuration = 100;
 const kAppearDuration = 100;
-const kMergeOutroDuration = 10;
+const kMergeOutroDuration = 60;
 const gCanvas = document.getElementById("canvas") as HTMLCanvasElement;
 const gContext = gCanvas.getContext("2d");
 
@@ -191,13 +207,13 @@ class Game {
 
   drawTile(val: number) {
     const pad = kTilePadding;
-    gContext.fillStyle = kTileStyle;
+    gContext.fillStyle = kTileStyle[val];
     gContext.fillRect(-kTileSize/2 + pad, -kTileSize/2 + pad, kTileSize - pad, kTileSize - pad);
 
     gContext.fillStyle = "black";
-    gContext.font = "30px verdana";
+    gContext.font = "30px arial";
     gContext.textAlign = "center";
-    gContext.fillText(String(val), 0, 10);
+    gContext.fillText(String(val), pad, 2*pad);
   }
 
   renderTile(row: number, col: number, now: Date) {
@@ -211,7 +227,7 @@ class Game {
     let curx = col*kTileSize + kTileSize/2;
     let cury = row*kTileSize + kTileSize/2;
     gContext.translate(curx, cury);
-    let translateFactor = (1 - (now-this.prevMoveTime)/kTranslateDuration);
+    let translateFactor = (1 - (now-this.prevMoveTime)/kTranslateDuration); // pct left of translation animation.
     // translate animation for ghost tile that just got merged:
     if (translateFactor > 0 && (tile.prev.mergedFrom.x != 0 || tile.prev.mergedFrom.y != 0)) {
       val = val / 2;
@@ -229,16 +245,16 @@ class Game {
       gContext.translate(-deltax * translateFactor, -deltay * translateFactor);
     }
     // Merge outro animation:
-    // else if (now - this.prevMoveTime < kTranslateDuration + kMergeOutroDuration && !isempty(tile.prev.mergedFrom)) {
-    //   let factor = (now - this.prevMoveTime - kTranslateDuration)/kMergeOutroDuration;
-    //   gContext.scale(1+factor/2, 1+factor/2);
-    // }
+    else if (now - this.prevMoveTime < kTranslateDuration + kMergeOutroDuration && (tile.prev.mergedFrom.x != 0 || tile.prev.mergedFrom.y != 0)) {
+      let factor = (now - this.prevMoveTime - kTranslateDuration)/kMergeOutroDuration;
+      gContext.scale(1 + 0.14*factor, 1 + 0.14*factor);
+    }
     // appear animation for new tiles:  
     else if (now - this.prevMoveTime < kTranslateDuration && tile.prev.isNew) {
       gContext.scale(0,0);
     } else if (now - this.prevMoveTime < kTranslateDuration + kAppearDuration && tile.prev.isNew) {
       let factor = (now - this.prevMoveTime - kTranslateDuration)/kAppearDuration;
-      gContext.scale(factor, factor);
+      gContext?.scale(factor,factor);
     }
 
     this.drawTile(val);
