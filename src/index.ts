@@ -4,8 +4,8 @@ import { Input } from "./input";
 const gCanvas = document.getElementById("canvas") as HTMLCanvasElement;
 const gContext = gCanvas.getContext("2d")!;
 
-const kRows = 10;
-const kColumns = 10;
+const kRows = 4;
+const kColumns = 4;
 const kBackgroundStyle = "#004643"; // https://www.happyhues.co/palettes/10
 let kTileSize = gCanvas.width/kRows;
 const kTilePadding = 2;
