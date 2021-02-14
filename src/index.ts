@@ -1,10 +1,14 @@
-import { Keyboard } from "./keyboard";
+import { Input } from "./input";
 
-const kRows = 4;
-const kColumns = 4;
+
+const gCanvas = document.getElementById("canvas") as HTMLCanvasElement;
+const gContext = gCanvas.getContext("2d")!;
+
+const kRows = 10;
+const kColumns = 10;
 const kBackgroundStyle = "#004643"; // https://www.happyhues.co/palettes/10
-const kTileSize = 90;
-const kTilePadding = 5;
+let kTileSize = gCanvas.width/kRows;
+const kTilePadding = 2;
 
 const kTileStyle = {
   0:"#f9bc60",
@@ -26,8 +30,6 @@ const kTileStyle = {
 const kTranslateDuration = 100;
 const kAppearDuration = 100;
 const kMergeOutroDuration = 60;
-const gCanvas = document.getElementById("canvas") as HTMLCanvasElement;
-const gContext = gCanvas.getContext("2d");
 
 interface Coord {
   x: number,
@@ -57,11 +59,11 @@ class Game {
   board: Board = Array<Array<Tile>>(kRows)
     .fill(undefined)
     .map((_, i) => Array(kColumns).fill(undefined));
-  keyboard: Keyboard;
+  Input: Input;
   prevMoveTime: Date = Date.now();
 
   constructor() {
-    this.keyboard = new Keyboard({
+    this.Input = new Input({
       ArrowLeft: () => { this.move(-1, 0); },
       ArrowDown: () => { this.move(0, 1); },
       ArrowRight: () => { this.move(1, 0); },
@@ -70,9 +72,9 @@ class Game {
 
     this.spawnTile();
     this.spawnTile();
+
     this.render();
   }
-
   // map each row or each column of the board in an order dictated by `x` and `y`.
   //
   // if abs(y) > 0, then each col of the board is processed. if y > 0, then the col order is bottom tile first. otherwise top.
@@ -154,10 +156,10 @@ class Game {
     if (somethingMoved) {
       this.spawnTile();
     }
-    this.render();
+    window.requestAnimationFrame(this.render.bind(this));
   }
 
-  // returns false if no space (e.g game over!).  otherwise true
+  // returns false if no space
   spawnTile(): boolean {
     let sampleSize = 0;
     let randomr = 0;
@@ -186,15 +188,11 @@ class Game {
   render() {
     gContext.clearRect(0, 0, gCanvas.width, gCanvas.height);
     gContext.fillStyle = kBackgroundStyle;
-    gContext.fillRect(0, 0, kColumns * kTileSize + kTilePadding, kRows * kTileSize + kTilePadding);
+    gContext.fillRect(0, 0, gCanvas.width, gCanvas.height);
 
     let now = Date.now();
     this.renderTiles(now);
-
-    // render()-Animate for the next second if we made a move.
-    if (now - this.prevMoveTime < 300) {
-      window.requestAnimationFrame((_) => { this.render(); });
-    }
+    window.requestAnimationFrame(this.render.bind(this));
   }
 
   renderTiles(now: Date) {
@@ -208,14 +206,15 @@ class Game {
   drawTile(val: number) {
     const pad = kTilePadding;
     gContext.fillStyle = kTileStyle[val];
-    gContext.fillRect(-kTileSize/2 + pad, -kTileSize/2 + pad, kTileSize - pad, kTileSize - pad);
+    gContext.fillRect(-kTileSize/2 + pad, -kTileSize/2 + pad, kTileSize - 2*pad, kTileSize - 2*pad);
 
     gContext.fillStyle = "black";
-    gContext.font = "30px arial";
+    gContext.font = 0.082*gCanvas.width + "px arial";
     gContext.textAlign = "center";
-    gContext.fillText(String(val), pad, 2*pad);
+    gContext.fillText(String(val), 0, 3*pad, (kTileSize-kTilePadding*2)*.8);
   }
 
+  // renders the animation frame at duration `now` of the given tile.
   renderTile(row: number, col: number, now: Date) {
     let tile = this.board[row][col];
     if (tile == undefined) {
@@ -226,15 +225,16 @@ class Game {
     let val = tile.val;
     let curx = col*kTileSize + kTileSize/2;
     let cury = row*kTileSize + kTileSize/2;
-    gContext.translate(curx, cury);
+    gContext.translate(curx, cury); // center of the tile.
     let translateFactor = (1 - (now-this.prevMoveTime)/kTranslateDuration); // pct left of translation animation.
+    let wasMerged = tile.prev.mergedFrom.x != 0 || tile.prev.mergedFrom.y != 0;
     // translate animation for ghost tile that just got merged:
-    if (translateFactor > 0 && (tile.prev.mergedFrom.x != 0 || tile.prev.mergedFrom.y != 0)) {
+    if (translateFactor > 0 && wasMerged) {
       val = val / 2;
       gContext?.save();
       let deltax = tile.prev.mergedFrom.x*kTileSize;
       let deltay = tile.prev.mergedFrom.y*kTileSize;
-      gContext?.translate(-deltax * translateFactor, -deltay * translateFactor);
+      gContext?.translate(-deltax * translateFactor, -deltay * translateFactor); // center of the ghost tile.
       this.drawTile(val);
       gContext?.restore();
     }
@@ -242,10 +242,10 @@ class Game {
     if (translateFactor > 0 && (tile.prev.pos.x != 0 || tile.prev.pos.y != 0)) {
       let deltax = tile.prev.pos.x*kTileSize;
       let deltay = tile.prev.pos.y*kTileSize;
-      gContext.translate(-deltax * translateFactor, -deltay * translateFactor);
+      gContext.translate(-deltax * translateFactor, -deltay * translateFactor); // animation position of the tile
     }
-    // Merge outro animation:
-    else if (now - this.prevMoveTime < kTranslateDuration + kMergeOutroDuration && (tile.prev.mergedFrom.x != 0 || tile.prev.mergedFrom.y != 0)) {
+    // Merge outro animation (the part where they grind against each other and become one):
+    else if (now - this.prevMoveTime < kTranslateDuration + kMergeOutroDuration && wasMerged) {
       let factor = (now - this.prevMoveTime - kTranslateDuration)/kMergeOutroDuration;
       gContext.scale(1 + 0.14*factor, 1 + 0.14*factor);
     }
@@ -267,8 +267,18 @@ class Game {
   }
 }
 
+
+function resizeCanvas() {
+  gContext.canvas.width = Math.min(window.innerWidth,window.innerHeight);
+  gContext.canvas.height = Math.min(window.innerWidth,window.innerHeight);
+  window.onresize = () => {
+    gContext.canvas.width = Math.min(window.innerWidth,window.innerHeight);
+    gContext.canvas.height = Math.min(window.innerWidth,window.innerHeight);
+    kTileSize = gCanvas.width/kRows;
+    if (game)
+      game.render();
+  };
+  window.onresize();
+}
+resizeCanvas();
 let game = new Game();
-// document.getElementById("new_game").addEventListener("click", (ev) => {
-//   game.stop();
-//   game = new Game();
-// });
