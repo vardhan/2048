@@ -1,7 +1,7 @@
 export class Input {
   mouseGesture: MouseGesture | undefined = undefined;
   touchGesture: TouchGesture | undefined = undefined;
-  constructor(handlers) {
+  constructor(handlers: any) {
     // register keyboard
     document.addEventListener("keydown", (ev: KeyboardEvent) => {
       if (ev.code in handlers) {
@@ -10,14 +10,14 @@ export class Input {
     });
 
     // register mouse
-    this.mouseGesture = new MouseGesture((code: String) {
+    this.mouseGesture = new MouseGesture((code: string) => {
       if (code in handlers) {
         handlers[code]();
       }
     });
 
     // register touch
-    this.touchGesture = new TouchGesture(document.getElementById("canvas"), (code: String) {
+    this.touchGesture = new TouchGesture(document.getElementById("canvas") as HTMLCanvasElement, (code: string) => {
       if (code in handlers) {
         handlers[code]();
       }
@@ -33,7 +33,7 @@ class TouchGesture {
   diffX = 0;
   diffY = 0;
 
-  constructor(canvas, handler) {
+  constructor(canvas: HTMLCanvasElement, handler: any) {
     let touchmove = (ev) => {
       this.diffX += (ev.touches[0].clientX - this.prevX);
       this.diffY += (ev.touches[0].clientY - this.prevY);
@@ -100,8 +100,8 @@ class MouseGesture {
   diffX = 0;
   diffY = 0;
 
-  constructor(handler) {
-    let mousemove = (event) => {
+  constructor(handler: any) {
+    let mousemove = (event: MouseEvent) => {
       this.diffX += event.movementX;
       this.diffY += event.movementY;
     }

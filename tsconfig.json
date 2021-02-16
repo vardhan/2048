@@ -5,7 +5,8 @@
     "module": "commonjs",
     "jsx": "preserve",
     "esModuleInterop": true,
-    "sourceMap": true,
+    // "sourceMap": true,
+    "inlineSourceMap": true,
     // "allowJs": true,
     "lib": [
       "es6",
@@ -13,7 +14,6 @@
     ],
     "rootDir": "src",
     "moduleResolution": "node",
-    "strict": true,
-    "strictNullChecks": true,
+    "strict": true
   }
 }
