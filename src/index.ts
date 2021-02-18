@@ -27,6 +27,7 @@ const kMergeOutroDuration = 60;
 const gCanvas = document.getElementById("canvas")! as HTMLCanvasElement;
 const gContext = gCanvas.getContext("2d", { alpha: false })!;
 let gTileSize = gCanvas.width/kRows;
+let gFont = 0.082*gCanvas.width + "px arial";
 
 interface Coord {
   x: number,
@@ -262,10 +263,8 @@ class Game {
     gContext.fillStyle = val in kTileStyle ? kTileStyle[val] : kTileStyle[2048];
     gContext.fillRect(-gTileSize/2 + pad, -gTileSize/2 + pad, gTileSize - 2*pad, gTileSize - 2*pad);
 
-    // const font = 0.082*gCanvas.width + "px arial";
-    const font = "78px arial";
     gContext.fillStyle = "black";
-    gContext.font = font;
+    gContext.font = gFont;
     gContext.textAlign = "center";
     gContext.fillText(val.toString(), 0, 3*pad, (gTileSize-kTilePadding*2)*.8);
   }
@@ -328,6 +327,7 @@ function resizeCanvas() {
     gContext.canvas.width = Math.min(window.innerWidth,window.innerHeight);
     gContext.canvas.height = Math.min(window.innerWidth,window.innerHeight);
     gTileSize = gCanvas.width/kRows;
+    gFont = 0.082*gCanvas.width + "px arial";
     if (game) {
       game.render();
     }
