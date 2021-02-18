@@ -17,8 +17,7 @@ const kTileStyle = {
   256:"#edcc62",
   512:"#edc950",
   1024:"#edc53f",
-  2048:"#edc22e",
-  4096:"#edc22e"
+  2048:"#edc22e"
 };
 
 const kTranslateDuration = 100;
@@ -52,7 +51,9 @@ function resetTileDiff(diff: TileDiff) {
 }
 class Tile {
   val: number = -1;
-  // where was this tile's previous position?; used for animating it to the current position.
+  // where was this tile's previous position; used for animating it to the current position.
+  // `pos` is relative offset.
+  // `mergedFrom` is relative offset.
   prev: TileDiff = {pos: {x:0, y: 0}, mergedFrom: {x:0, y:0}, isNew: true};
 
   constructor(val: number) {
@@ -69,9 +70,10 @@ type Board = Array<TileRow>;
 class Game {
   board: Board;
   Input: Input;
-  prevMoveTimeMs: number = Date.now();
+  prevMoveTimeMs: number = performance.now();
   scratchRow: TileRow = new Array<Tile>(kRows);
   swipeDiff: Coord = {x: 0, y: 0};
+  animationRequest: number | undefined = undefined;
   
   boundRender = this.render.bind(this);
 
@@ -89,14 +91,13 @@ class Game {
         ArrowDown: () => { this.move(0, 1); },
         ArrowRight: () => { this.move(1, 0); },
         ArrowUp: () => { this.move(0, -1); }
-      },
-      this.swipe.bind(this)
+      }
     );
 
     this.spawnTile();
     this.spawnTile();
 
-    this.render();
+    this.render(performance.now());
   }
 
   swipe(x: number, y: number) {
@@ -107,7 +108,7 @@ class Game {
       this.swipeDiff.x = 0;
       this.swipeDiff.y = y;
     }
-    this.scheduleNextRender(Date.now());
+    this.scheduleNextRender(performance.now());
   }
   copyBoardColumnIntoScratchRow(c: number) {
     let i = 0;
@@ -159,7 +160,7 @@ class Game {
 
   // move the board towards direction (x,y).
   move(x:number, y: number) {
-    let now = Date.now();
+    let now = performance.now();
     this.prevMoveTimeMs = now;
     let somethingMoved = false;
     this.map_board(x,y, (tiles: TileRow): TileRow => {
@@ -170,12 +171,10 @@ class Game {
         if (tiles[i].val == -1) {
           continue;
         }
-        // tiles[i]!.prev = {pos: {x: 0, y: 0}, isNew: false, mergedFrom: {x:0, y:0}}; // for animation
         resetTileDiff(tiles[i].prev);
         tiles[i].prev.isNew = false;
         // move to the left?
         output[free].val = tiles[i].val;
-        // output[free].prev = {...tiles[i].prev, pos: {x: x * (i-free), y: y * (i-free)}};
         output[free].prev.pos.x = x * (i-free);
         output[free].prev.pos.y = y * (i-free);
         // output[free].prev.mergedFrom = tiles[i].prev.mergedFrom.x;  TODO
@@ -211,12 +210,11 @@ class Game {
   }
 
   scheduleNextRender(now: number) {
-    if (now - this.prevMoveTimeMs < 300) {
-      window.requestAnimationFrame(this.boundRender);
+    if (this.animationRequest == undefined && now - this.prevMoveTimeMs < 300) {
+      this.animationRequest = window.requestAnimationFrame(this.boundRender);
     }
   }
 
-  // returns false if no space
   spawnTile(): boolean {
     let sampleSize = 0;
     let randomr = 0;
@@ -238,15 +236,15 @@ class Game {
     }
     this.board[randomr][randomc].reset(2);
     this.board[randomr][randomc].prev.isNew = true;
-    return true;
   }
 
-  render() {
+  render(now: number) {
+    this.animationRequest = undefined;
+  
     gContext.clearRect(0, 0, gCanvas.width, gCanvas.height);
     gContext.fillStyle = kBackgroundStyle;
     gContext.fillRect(0, 0, gCanvas.width, gCanvas.height);
 
-    let now = Date.now();
     this.renderTiles(now);
     this.scheduleNextRender(now);
   }
@@ -261,14 +259,15 @@ class Game {
 
   drawTile(val: number) {
     const pad = kTilePadding;
-    gContext.fillStyle = kTileStyle[val];
+    gContext.fillStyle = val in kTileStyle ? kTileStyle[val] : kTileStyle[2048];
     gContext.fillRect(-gTileSize/2 + pad, -gTileSize/2 + pad, gTileSize - 2*pad, gTileSize - 2*pad);
 
-    const font = 0.082*gCanvas.width + "px arial";
+    // const font = 0.082*gCanvas.width + "px arial";
+    const font = "78px arial";
     gContext.fillStyle = "black";
     gContext.font = font;
     gContext.textAlign = "center";
-    gContext.fillText(String(val), 0, 3*pad, (gTileSize-kTilePadding*2)*.8);
+    gContext.fillText(val.toString(), 0, 3*pad, (gTileSize-kTilePadding*2)*.8);
   }
 
   // renders the animation frame at duration `now` of the given tile.
