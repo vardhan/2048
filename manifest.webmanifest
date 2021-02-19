@@ -1,0 +1,8 @@
+{
+    "name": "2048",
+    "short_name": "2048",
+    "start_url": "/",
+    "display": "standalone",
+    "theme_color": "#0f0e17",
+    "background_color": "#0f0e17"
+}
