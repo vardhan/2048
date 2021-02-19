@@ -1,7 +1,7 @@
 import { Input } from "./input";
 
 const kDimension = 4;
-const kBackgroundStyle = "#004643"; // https://www.happyhues.co/palettes/10
+const kBackgroundStyle = "#0f0e17"; // https://www.happyhues.co/palettes/10
 const kTilePadding = 3;
 const kRoundedRadius = 7;
 const kTileStyle = {
