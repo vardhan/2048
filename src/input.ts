@@ -1,19 +1,26 @@
 export class Input {
   touchGesture: TouchGesture | undefined = undefined;
+  handlers: any
+
   constructor(handlers: any) {
     // register keyboard
-    document.addEventListener("keydown", (ev: KeyboardEvent) => {
-      if (ev.code in handlers) {
-        handlers[ev.code]();
-      }
-    });
+    this.handlers =  handlers
+    document.addEventListener("keydown", this.handleKey.bind(this));
 
-    // // register touch
-    // this.touchGesture = new TouchGesture(document.getElementById("canvas") as HTMLCanvasElement, (code: string) => {
-    //   if (code in handlers) {
-    //     handlers[code]();
-    //   }
-    // });
+    // register touch
+    this.touchGesture = new TouchGesture(document.body, this.handleTouch.bind(this));
+  }
+
+  handleKey(ev: KeyboardEvent) {
+    if (ev.key in this.handlers) {
+      this.handlers[ev.key]();
+    }
+  }
+
+  handleTouch(code: string) {
+    if (code in this.handlers) {
+      this.handlers[code]();
+    }
   }
 }
 
@@ -24,7 +31,7 @@ class TouchGesture {
   diffX = 0;
   diffY = 0;
 
-  constructor(canvas: HTMLCanvasElement, handler: any) {
+  constructor(canvas: HTMLElement, handler: any) {
     let touchmove = (ev) => {
       this.diffX += (ev.touches[0].clientX - this.prevX);
       this.diffY += (ev.touches[0].clientY - this.prevY);
@@ -55,7 +62,7 @@ class TouchGesture {
     });
   };
 
-  eval_swipe(): string | undefined {
+  eval_swipe(): number | undefined {
     if (this.dragStart == undefined) {
       return;
     }

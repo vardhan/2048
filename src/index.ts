@@ -1,9 +1,9 @@
 import { Input } from "./input";
 
-const kRows = 4;
-const kColumns = 4;
+const kDimension = 4;
 const kBackgroundStyle = "#004643"; // https://www.happyhues.co/palettes/10
-const kTilePadding = 2;
+const kTilePadding = 3;
+const kRoundedRadius = 7;
 const kTileStyle = {
   0:"#f9bc60",
   1:"#f9bc60",
@@ -21,13 +21,13 @@ const kTileStyle = {
 };
 
 const kTranslateDuration = 100;
-const kAppearDuration = 100;
-const kMergeOutroDuration = 60;
+const kAppearDuration = 60;
+const kMergeOutroDuration = 100;
 
 const gCanvas = document.getElementById("canvas")! as HTMLCanvasElement;
 const gContext = gCanvas.getContext("2d", { alpha: false })!;
-let gTileSize = gCanvas.width/kRows;
-let gFont = 0.082*gCanvas.width + "px arial";
+let gTileSize = gCanvas.width/kDimension;
+let gFont = 0.082*gCanvas.width + "px cabin";
 
 interface Coord {
   x: number,
@@ -50,6 +50,31 @@ function resetTileDiff(diff: TileDiff) {
   resetCoord(diff.mergedFrom);
   diff.isNew = true;
 }
+let gNumCache = {0: "0", 2: "2", 4: "4"} // number -> string=
+function getCachedString(num: number): string {
+  if (!(num in gNumCache)) {
+    gNumCache[num] = num.toString();
+  }
+  return gNumCache[num]
+}
+function easeOutBack(x: number): number {
+  const c1 = 1.70158;
+  const c3 = c1 + 1;
+
+  return 1 + c3 * Math.pow(x - 1, 3) + c1 * Math.pow(x - 1, 2);
+}
+function fillRoundedRect(x: number, y: number, w: number, h: number, r: number) {
+  if (w < 2 * r) r = w / 2;
+  if (h < 2 * r) r = h / 2;
+  gContext.beginPath();
+  gContext.moveTo(x+r, y);
+  gContext.arcTo(x+w, y,   x+w, y+h, r);
+  gContext.arcTo(x+w, y+h, x,   y+h, r);
+  gContext.arcTo(x,   y+h, x,   y,   r);
+  gContext.arcTo(x,   y,   x+w, y,   r);
+  gContext.closePath();
+}
+
 class Tile {
   val: number = -1;
   // where was this tile's previous position; used for animating it to the current position.
@@ -64,53 +89,94 @@ class Tile {
     this.val = val;
     resetTileDiff(this.prev);
   }
+
+  // renders the animation frame at duration `now` of the given tile.
+  render(elapsedMs: number) {
+    let val = this.val;
+    if (val == -1) {
+      return;
+    }
+    let wasMerged = this.prev.mergedFrom.x != 0 || this.prev.mergedFrom.y != 0;
+    let translateFactor = Math.max(0, 1 - elapsedMs/kTranslateDuration); // pct left of translation animation.
+    // translate animation for ghost tile that just got merged:
+    if (wasMerged && elapsedMs <= kTranslateDuration + kMergeOutroDuration) {
+      val /= 2;
+      gContext?.save();
+      let deltax = this.prev.mergedFrom.x*gTileSize;
+      let deltay = this.prev.mergedFrom.y*gTileSize;
+      gContext?.translate(-deltax * translateFactor, -deltay * translateFactor); // center of the ghost tile.
+      this.drawTile(val);
+      gContext?.restore();
+    }
+    // translate animation for any moving tile
+    if (elapsedMs <= kTranslateDuration + kMergeOutroDuration && (this.prev.pos.x != 0 || this.prev.pos.y != 0)) {
+      let deltax = this.prev.pos.x*gTileSize;
+      let deltay = this.prev.pos.y*gTileSize;
+      gContext.translate(-deltax * translateFactor, -deltay * translateFactor); // animation position of the tile
+    }
+    // Merge outro animation (the part where they grind against each other and become one):
+    if (wasMerged && elapsedMs >= kTranslateDuration && elapsedMs <= kTranslateDuration + kMergeOutroDuration) {
+      val *= 2;
+      let factor = (elapsedMs - kTranslateDuration)/kMergeOutroDuration;
+      gContext?.scale(1.10*easeOutBack(factor),1.10*easeOutBack(factor));
+    }
+    // appear animation for new tiles:  
+    if (elapsedMs <= kTranslateDuration && this.prev.isNew) {
+      return;
+    } else if (elapsedMs <= kTranslateDuration + kAppearDuration && this.prev.isNew) {
+      let factor = (elapsedMs - kTranslateDuration)/kAppearDuration;
+      gContext?.scale(easeOutBack(factor),easeOutBack(factor));
+    }
+
+    this.drawTile(val);
+  }
+
+  drawTile(val: number) {
+    const pad = kTilePadding;
+    gContext.fillStyle = val in kTileStyle ? kTileStyle[val] : kTileStyle[2048];
+    fillRoundedRect(-gTileSize/2 + pad, -gTileSize/2 + pad, gTileSize - 2*pad, gTileSize - 2*pad, kRoundedRadius);
+    gContext.fill();
+
+    gContext.fillStyle = "black";
+    gContext.font = gFont;
+    gContext.textAlign = "center";
+    gContext.fillText(getCachedString(val), 0, 2*pad, (gTileSize-pad*2)*.8);
+  }
 }
-// Board is an array of kRows. Each row is an array of column values.
+
+// Board is an array of rows. Each row is an array of column values.
 type TileRow = Array<Tile>;
 type Board = Array<TileRow>;
 class Game {
   board: Board;
   Input: Input;
   prevMoveTimeMs: number = performance.now();
-  scratchRow: TileRow = new Array<Tile>(kRows);
-  swipeDiff: Coord = {x: 0, y: 0};
+  scratchRow: TileRow = new Array<Tile>(kDimension);
   animationRequest: number | undefined = undefined;
-  
+
   boundRender = this.render.bind(this);
 
   constructor() {
     this.board = new Array<Array<Tile>>();
-    for (let r = 0; r < kRows; r++) {
+    for (let r = 0; r < kDimension; r++) {
       let row = new Array<Tile>();
-      for (let c = 0; c < kColumns; c++) {
+      for (let c = 0; c < kDimension; c++) {
         row.push(new Tile(-1));
       }
       this.board.push(row);
     }
     this.Input = new Input({
-        ArrowLeft: () => { this.move(-1, 0); },
-        ArrowDown: () => { this.move(0, 1); },
-        ArrowRight: () => { this.move(1, 0); },
-        ArrowUp: () => { this.move(0, -1); }
+        "ArrowLeft": this.move.bind(this, -1, 0),  // left
+        "ArrowDown": this.move.bind(this, 0, 1), // down
+        "ArrowRight": this.move.bind(this, 1, 0), // right
+        "ArrowUp": this.move.bind(this, 0, -1) // up
       }
     );
 
     this.spawnTile();
     this.spawnTile();
-
-    this.render(performance.now());
   }
 
-  swipe(x: number, y: number) {
-    if (Math.abs(x) > Math.abs(y)) {
-      this.swipeDiff.x = x;
-      this.swipeDiff.y = 0;
-    } else {
-      this.swipeDiff.x = 0;
-      this.swipeDiff.y = y;
-    }
-    this.scheduleNextRender(performance.now());
-  }
   copyBoardColumnIntoScratchRow(c: number) {
     let i = 0;
     for (let r of this.board) {
@@ -118,26 +184,25 @@ class Game {
     }
   }
 
-  // map each row or each column of the board in an order dictated by `x` and `y`.
+  // move the board towards direction `x` and `y`.
   //
-  // if abs(y) > 0, then each col of the board is processed. if y > 0, then the col order is bottom tile first. otherwise top.
-  // else if abs(x) > 0, then each row of the board is processed. if x > 0, then the row order is right tile first. otherwise left.
-  //
-  // the col/row returned by `processor` is used to update the board. `processor` may update the supplied input in-place and return
-  // it instead of a new copy.
+  // To move the board, the board is first normalized into rows (rows stay as rows, columns transpose into rows), and the direction is normalized to towards x = 1.
+  // The algorithm only moves things row-wise, to the left, and then denormalizes the movement back to `x` and `y`.
   //
   // requires: x,y in [-1,0,1] && abs(x) xor abs(y)
-  map_board(x: number, y: number, processor: (input: TileRow) => TileRow) {
+  move(x:number, y: number) {
+    let now = performance.now();
+    this.prevMoveTimeMs = now;
+    let somethingMoved = false;
     if (x != 0) {
       for (let r = 0; r < this.board.length; r++) {
         if (x > 0) {
           this.board[r].reverse();
         }
-        let output = processor(this.board[r]!);
+        somethingMoved = this.moveRow(this.board[r], x, y) || somethingMoved;
         if (x > 0) {
-          output.reverse();
-        }
-        this.board[r] = output;
+          this.board[r].reverse();
+        };
       }
     }
     else if (y != 0) {
@@ -147,61 +212,16 @@ class Game {
         if (y > 0) {
           this.scratchRow.reverse();
         }
-        let output = processor(this.scratchRow);
+        somethingMoved = this.moveRow(this.scratchRow, x, y) || somethingMoved;
         if (y > 0) {
-          output.reverse();
+          this.scratchRow.reverse();
         }
         // put the column back in.
         for (let i = 0; i < this.board.length; i++) {
-          this.board[i][c] = output[i];
+          this.board[i][c] = this.scratchRow[i];
         }
       }
     }
-  }
-
-  // move the board towards direction (x,y).
-  move(x:number, y: number) {
-    let now = performance.now();
-    this.prevMoveTimeMs = now;
-    let somethingMoved = false;
-    this.map_board(x,y, (tiles: TileRow): TileRow => {
-      let output: TileRow = tiles;
-      let free = 0;
-      let skipMerge = false;
-      for (let i = 0; i < tiles.length; i++) {
-        if (tiles[i].val == -1) {
-          continue;
-        }
-        resetTileDiff(tiles[i].prev);
-        tiles[i].prev.isNew = false;
-        // move to the left?
-        output[free].val = tiles[i].val;
-        output[free].prev.pos.x = x * (i-free);
-        output[free].prev.pos.y = y * (i-free);
-        // output[free].prev.mergedFrom = tiles[i].prev.mergedFrom.x;  TODO
-        output[free].prev.isNew = tiles[i].prev.isNew;
-        if (i != free) {
-          somethingMoved = true;
-        }
-        // merge?
-        if (free > 0 && output[free-1].val == output[free].val && !skipMerge) {
-          output[free - 1].val += output[free].val;
-          output[free - 1].prev.mergedFrom.x = output[free].prev.pos.x + x;
-          output[free - 1].prev.mergedFrom.y = output[free].prev.pos.y + y;
-          output[free - 1].prev.isNew = false;
-          output[free].reset(-1);
-          skipMerge = true;
-          somethingMoved = true;
-        } else {
-          free++;
-          skipMerge = false;
-        }
-      }
-      for (; free < tiles.length; free++) {
-        output[free].reset(-1);
-      }
-      return output;
-    });
 
     if (somethingMoved) {
       this.spawnTile();
@@ -210,13 +230,57 @@ class Game {
     this.scheduleNextRender(now);
   }
 
+  // always move `tiles` to the left. `x` and `y` are used to keep state for animation purposes.
+  // return true if something moved.
+  moveRow(tiles: TileRow, x: number, y: number): boolean {
+    let somethingMoved = false;
+    let output: TileRow = tiles;
+    let free = 0;
+    let skipMerge = false;
+    for (let i = 0; i < tiles.length; i++) {
+      if (tiles[i].val == -1) {
+        continue;
+      }
+      resetTileDiff(tiles[i].prev);
+      tiles[i].prev.isNew = false;
+      // move to the left?
+      output[free].val = tiles[i].val;
+      output[free].prev.pos.x = x * (i-free);
+      output[free].prev.pos.y = y * (i-free);
+      output[free].prev.mergedFrom.x = 0;
+      output[free].prev.mergedFrom.y = 0;
+      output[free].prev.isNew = tiles[i].prev.isNew;
+      if (i != free) {
+        somethingMoved = true;
+      }
+      // merge?
+      if (free > 0 && output[free-1].val == output[free].val && !skipMerge) {
+        output[free - 1].val += output[free].val;
+        output[free - 1].prev.mergedFrom.x = output[free].prev.pos.x + x;
+        output[free - 1].prev.mergedFrom.y = output[free].prev.pos.y + y;
+        output[free - 1].prev.isNew = false;
+        output[free].reset(-1);
+        skipMerge = true;
+        somethingMoved = true;
+      } else {
+        free++;
+        skipMerge = false;
+      }
+    }
+    for (; free < tiles.length; free++) {
+      output[free].reset(-1);
+    }
+    return somethingMoved;
+  }
+
   scheduleNextRender(now: number) {
-    if (this.animationRequest == undefined && now - this.prevMoveTimeMs < 300) {
+    let elapsed = now - this.prevMoveTimeMs;
+    if (this.animationRequest == undefined && elapsed < (kTranslateDuration + Math.max(kAppearDuration, kMergeOutroDuration))) {
       this.animationRequest = window.requestAnimationFrame(this.boundRender);
     }
   }
 
-  spawnTile(): boolean {
+  spawnTile() {
     let sampleSize = 0;
     let randomr = 0;
     let randomc = 0;
@@ -240,101 +304,42 @@ class Game {
   }
 
   render(now: number) {
+    let nowInMs = performance.now();
     this.animationRequest = undefined;
   
     gContext.clearRect(0, 0, gCanvas.width, gCanvas.height);
     gContext.fillStyle = kBackgroundStyle;
     gContext.fillRect(0, 0, gCanvas.width, gCanvas.height);
 
-    this.renderTiles(now);
-    this.scheduleNextRender(now);
+    this.renderTiles(nowInMs);
+    this.scheduleNextRender(nowInMs);
   }
 
   renderTiles(nowInMs: number) {
+    let elapsed = nowInMs-this.prevMoveTimeMs;
     for (let r = 0; r < this.board.length; r++) {
       for (let c  = 0 ; c < this.board[r].length; c++) {
-        this.renderTile(r, c, nowInMs);
+        gContext.save();
+        let curx = c*gTileSize + gTileSize/2;
+        let cury = r*gTileSize + gTileSize/2;
+        gContext.translate(curx, cury); // center of the tile.
+        this.board[r][c].render(elapsed);
+        gContext.restore();
       }
     }
   }
-
-  drawTile(val: number) {
-    const pad = kTilePadding;
-    gContext.fillStyle = val in kTileStyle ? kTileStyle[val] : kTileStyle[2048];
-    gContext.fillRect(-gTileSize/2 + pad, -gTileSize/2 + pad, gTileSize - 2*pad, gTileSize - 2*pad);
-
-    gContext.fillStyle = "black";
-    gContext.font = gFont;
-    gContext.textAlign = "center";
-    gContext.fillText(val.toString(), 0, 3*pad, (gTileSize-kTilePadding*2)*.8);
-  }
-
-  // renders the animation frame at duration `now` of the given tile.
-  renderTile(row: number, col: number, nowMs: number) {
-    let tile = this.board[row][col];
-    if (tile.val == -1) {
-      return;
-    }
-
-    gContext.save();
-    let val = tile.val;
-    let curx = col*gTileSize + gTileSize/2;
-    let cury = row*gTileSize + gTileSize/2;
-    gContext.translate(curx, cury); // center of the tile.
-    let translateFactor = (1 - (nowMs-this.prevMoveTimeMs)/kTranslateDuration); // pct left of translation animation.
-    let wasMerged = tile.prev.mergedFrom.x != 0 || tile.prev.mergedFrom.y != 0;
-    // translate animation for ghost tile that just got merged:
-    if (translateFactor > 0 && wasMerged) {
-      val = val / 2;
-      gContext?.save();
-      let deltax = tile.prev.mergedFrom.x*gTileSize;
-      let deltay = tile.prev.mergedFrom.y*gTileSize;
-      gContext?.translate(-deltax * translateFactor, -deltay * translateFactor); // center of the ghost tile.
-      this.drawTile(val);
-      gContext?.restore();
-    }
-    // translate animation for any moving tile
-    if (translateFactor > 0 && (tile.prev.pos.x != 0 || tile.prev.pos.y != 0)) {
-      let deltax = tile.prev.pos.x*gTileSize;
-      let deltay = tile.prev.pos.y*gTileSize;
-      gContext.translate(-deltax * translateFactor, -deltay * translateFactor); // animation position of the tile
-    }
-    // Merge outro animation (the part where they grind against each other and become one):
-    else if (nowMs - this.prevMoveTimeMs < kTranslateDuration + kMergeOutroDuration && wasMerged) {
-      let factor = (nowMs - this.prevMoveTimeMs - kTranslateDuration)/kMergeOutroDuration;
-      gContext.scale(1 + 0.14*factor, 1 + 0.14*factor);
-    }
-    // appear animation for new tiles:  
-    else if (nowMs - this.prevMoveTimeMs < kTranslateDuration && tile.prev.isNew) {
-      gContext.scale(0,0);
-    } else if (nowMs - this.prevMoveTimeMs < kTranslateDuration + kAppearDuration && tile.prev.isNew) {
-      let factor = (nowMs - this.prevMoveTimeMs - kTranslateDuration)/kAppearDuration;
-      gContext?.scale(factor,factor);
-    }
-
-    this.drawTile(val);
-
-    gContext.restore();
-  }
-
-  stop() {
-    // Stop any on going timers.
-  }
 }
 
-function resizeCanvas() {
-  let resize = () => {
-    gContext.canvas.width = Math.min(window.innerWidth,window.innerHeight);
-    gContext.canvas.height = Math.min(window.innerWidth,window.innerHeight);
-    gTileSize = gCanvas.width/kRows;
-    gFont = 0.082*gCanvas.width + "px arial";
-    if (game) {
-      game.render();
-    }
-  };
-  window.onresize = resize;
-  resize();
-}
+function resize() {
+  // gContext.canvas.width = Math.min(window.innerWidth,window.innerHeight);
+  // gContext.canvas.height = Math.min(window.innerWidth,window.innerHeight);
+  gTileSize = gCanvas.width/kDimension;
+  gFont = 0.082*gCanvas.width + "px Cabin";
+  if (game) {
+    game.render(performance.now());
+  }
+};
 
 let game = new Game();
-resizeCanvas();
+window.onresize = resize;
+resize();

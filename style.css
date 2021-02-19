@@ -1,14 +1,28 @@
 html, body {
-  width: 100%;
-  height: 100%;
-  margin: 0;
+  display: flex;
+  justify-content: center;
+  align-items: center;
   overscroll-behavior: none;
+  overflow: hidden;
+  background: #004643;
+}
+#canvas {
+  width: 400px;
+  height: 400px;
+  border: 1px solid #eee1c9;
+  border-radius: 3px;
+  padding: 2px;
 }
 
-canvas {
-  padding-left: 0;
-  padding-right: 0;
-  margin-left: auto;
-  margin-right: auto;
-  /* display: block; */
+/* On screens that are 992px wide or less, the background color is blue */
+@media screen
+    and (max-width: 992px)
+    and (orientation: portrait) {
+  #canvas {
+    width: 800px;
+    height: 800px;
+    border: 1px solid #eee1c9;
+    border-radius: 3px;
+    padding: 2px;
+  }
 }
